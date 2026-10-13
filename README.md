@@ -84,10 +84,18 @@ Temporal worker started. Waiting for tasks...
 ---
 
 ### Step 3: Trigger the Workflow Execution
-In a third terminal, start a new workflow run:
-```bash
-npm run start
-```
+In a third terminal, start a new workflow run. You can choose which engine executes the "Add to Cart" activity:
+
+- **Playwright mode (Default, fast, no API keys needed):**
+  ```bash
+  npm run start -- --playright
+  # or simply: npm run start
+  ```
+
+- **Stagehand AI mode (Uses natural-language agent):**
+  ```bash
+  npm run start -- --stagehand
+  ```
 This logs in to SauceDemo, captures inventory, displays the product list, and pauses with output similar to:
 ```text
 Started workflow: inventory-check-1718000000000

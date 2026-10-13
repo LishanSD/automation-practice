@@ -151,9 +151,80 @@ function resolveStagehandModel(): { modelName: string; apiKey: string } {
   return { modelName, apiKey };
 }
 
-// Stagehand-powered activity: login and verification are deterministic,
-// while "add the item" and "open the cart" are done by natural-language act().
-export async function addToCart(
+export type CartMode = "playwright" | "stagehand";
+
+// Native Playwright implementation: fast, reliable, and requires zero LLM API keys.
+export async function addToCartPlaywright(
+  itemName: string,
+  username?: string
+): Promise<AddToCartResult> {
+  const attempt = Context.current().info.attempt;
+  const user = username ?? "standard_user";
+
+  console.log(`\n--- [Activity: addToCart (Playwright)] Attempt #${attempt} ---`);
+  console.log(`Target item: "${itemName}"`);
+  console.log(`Target username: "${user}"`);
+
+  const browser = await chromium.launch({ headless: false });
+
+  try {
+    const page = await browser.newPage();
+
+    console.log(`[Playwright] Navigating to https://www.saucedemo.com...`);
+    await page.goto("https://www.saucedemo.com", {
+      waitUntil: "domcontentloaded",
+    });
+
+    console.log(`[Playwright] Logging in as '${user}'...`);
+    await page.locator('[data-test="username"]').fill(user);
+    await page.locator('[data-test="password"]').fill("secret_sauce");
+    await page.locator('[data-test="login-button"]').click();
+
+    const inventoryLocator = page.locator(".inventory_item").first();
+    const errorLocator = page.locator('[data-test="error"]');
+
+    const outcome = await Promise.race([
+      inventoryLocator.waitFor({ timeout: 15000 }).then(() => "success" as const),
+      errorLocator.waitFor({ timeout: 15000 }).then(() => "error" as const),
+    ]);
+
+    if (outcome === "error") {
+      const errorText =
+        (await errorLocator.textContent())?.trim() || "Login failed";
+      console.error(`[Playwright] Login failed for '${user}': "${errorText}"`);
+      throw ApplicationFailure.nonRetryable(
+        `User '${user}' cannot log in: ${errorText}`,
+        "LockedOutUserError"
+      );
+    }
+    console.log(`[Playwright] Logged in successfully.`);
+
+    console.log(`[Playwright] Locating product "${itemName}" and clicking Add to cart...`);
+    const itemContainer = page.locator(".inventory_item", {
+      has: page.locator(".inventory_item_name", { hasText: itemName }),
+    });
+    await itemContainer.locator("button").click();
+
+    console.log(`[Playwright] Navigating to cart...`);
+    await page.locator(".shopping_cart_link").click();
+    await page.locator(".cart_item").first().waitFor();
+
+    const screenshotDir = path.resolve("artifacts");
+    await fs.mkdir(screenshotDir, { recursive: true });
+
+    const screenshotPath = path.join(screenshotDir, "cart.png");
+    console.log(`[Playwright] Capturing cart screenshot -> ${screenshotPath}`);
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+
+    console.log(`[Activity: addToCart (Playwright)] Succeeded on attempt #${attempt}.\n`);
+    return { itemName, screenshotPath };
+  } finally {
+    await browser.close();
+  }
+}
+
+// Stagehand AI implementation: uses natural language instructions via LLM.
+export async function addToCartStagehand(
   itemName: string,
   username?: string
 ): Promise<AddToCartResult> {
@@ -161,7 +232,7 @@ export async function addToCart(
   const user = username ?? "standard_user";
   const { modelName, apiKey } = resolveStagehandModel();
 
-  console.log(`\n--- [Activity: addToCart] Attempt #${attempt} ---`);
+  console.log(`\n--- [Activity: addToCart (Stagehand)] Attempt #${attempt} ---`);
   console.log(`Target item: "${itemName}"`);
   console.log(`Target username: "${user}"`);
   console.log(`Stagehand AI Model: "${modelName}"`);
@@ -183,20 +254,17 @@ export async function addToCart(
 
     const [page] = await browser.context.pages();
 
-    // Open the SauceDemo login page.
     console.log(`[Stagehand] Navigating to https://www.saucedemo.com...`);
     await page.goto("https://www.saucedemo.com");
 
     // Wait for the login form to render before interacting (Stagehand locators do not auto-wait like Playwright).
     await page.waitForSelector('[data-test="username"]', { timeout: 15000 });
 
-    // Deterministic login (no LLM involved, so credentials never reach the model).
     console.log(`[Stagehand] Logging in as '${user}' (deterministic)...`);
     await page.locator('[data-test="username"]').fill(user);
     await page.locator('[data-test="password"]').fill("secret_sauce");
     await page.locator('[data-test="login-button"]').click();
 
-    // Wait for either the inventory list or a login error.
     const loggedIn = await page.waitForSelector(".inventory_item", {
       timeout: 15000,
     }).catch(() => false);
@@ -240,12 +308,24 @@ export async function addToCart(
     console.log(`[Stagehand] Capturing cart screenshot -> ${screenshotPath}`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
 
-    console.log(`[Activity: addToCart] Succeeded on attempt #${attempt}.\n`);
+    console.log(`[Activity: addToCart (Stagehand)] Succeeded on attempt #${attempt}.\n`);
     return { itemName, screenshotPath };
   } finally {
     console.log(`[Stagehand] Closing browser and cleaning up session.`);
     await stagehand?.close().catch(() => {});
     await browser.close().catch(() => {});
   }
+}
+
+// Master addToCart activity that delegates based on the selected mode (defaults to "playwright").
+export async function addToCart(
+  itemName: string,
+  username?: string,
+  mode: CartMode = "playwright"
+): Promise<AddToCartResult> {
+  if (mode === "stagehand") {
+    return addToCartStagehand(itemName, username);
+  }
+  return addToCartPlaywright(itemName, username);
 }
 

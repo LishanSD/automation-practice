@@ -10,6 +10,10 @@ function parseArgs(): { options: WorkflowOptions; isHelp: boolean } {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") {
       isHelp = true;
+    } else if (arg === "--playwright" || arg === "--playright") {
+      options.mode = "playwright";
+    } else if (arg === "--stagehand") {
+      options.mode = "stagehand";
     } else if (arg === "--simulate-retry" || arg === "--flaky") {
       options.simulateFirstAttemptFailure = true;
     } else if (arg === "--user" && i + 1 < args.length) {
@@ -29,6 +33,8 @@ function printUsage() {
 Usage: npm run start [-- <options>]
 
 Options:
+  --playwright, --playright      Add to cart with native Playwright (fast, deterministic - default).
+  --stagehand                    Add to cart with Stagehand AI agent (natural language prompts).
   --simulate-retry, --flaky       Simulate a transient failure on attempt #1 to watch Temporal retry.
   --user <username>              SauceDemo username to run with:
                                    • standard_user (default)
@@ -37,6 +43,14 @@ Options:
   --timeout <duration>           Activity startToCloseTimeout (e.g. '3s', '4s', '2 minutes')
   --attempts <num>               Maximum retry attempts (default: 3)
   --help, -h                     Show this help message
+
+Cart Mode Examples:
+  • Run with Playwright (default):
+     npm run start -- --playright
+     (or npm run start -- --playwright)
+
+  • Run with Stagehand AI:
+     npm run start -- --stagehand
 
 Level 3 Examples:
   1. Watch Temporal retry a flaky attempt:
@@ -65,8 +79,10 @@ async function main() {
 
   const client = new Client({ connection });
 
+  const cartMode = options.mode ?? "playwright";
   console.log("==================================================");
   console.log("Starting Workflow Execution");
+  console.log(` Cart Mode: ${cartMode.toUpperCase()} (${cartMode === "stagehand" ? "Stagehand AI Agent" : "Native Playwright"})`);
   if (options.simulateFirstAttemptFailure) {
     console.log(" Mode: Flaky Activity Simulation (Attempt #1 will fail, #2 will succeed)");
   }

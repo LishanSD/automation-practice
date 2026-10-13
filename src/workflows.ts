@@ -33,6 +33,7 @@ export type WorkflowOptions = {
   simulateFirstAttemptFailure?: boolean;
   activityTimeout?: string;
   maxAttempts?: number;
+  mode?: "playwright" | "stagehand";
 };
 
 export async function inventoryWorkflow(
@@ -91,13 +92,14 @@ export async function inventoryWorkflow(
   // 3. On approval, add chosen item (defaulting to the first item) to cart and screenshot.
   const targetItem =
     chosenItem || inventoryResult.products[0]?.name || "Sauce Labs Backpack";
-  const cartResult = await addToCart(targetItem, options?.username);
+  const mode = options?.mode ?? "playwright";
+  const cartResult = await addToCart(targetItem, options?.username, mode);
 
   return {
     status: "approved",
     inventory: inventoryResult,
     cart: cartResult,
-    message: `Workflow approved. Added '${targetItem}' to cart and took screenshot.`,
+    message: `Workflow approved (${mode} mode). Added '${targetItem}' to cart and took screenshot.`,
   };
 }
 
