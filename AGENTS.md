@@ -46,9 +46,9 @@ Workflows can pause indefinitely without consuming CPU or memory using Temporal'
 - `src/signal.ts`: CLI script to send signals with optional item selection.
 
 ### [Human Task] Run Level 2
-1. Start the workflow:
+1. Start the workflow in approval mode:
    ```bash
-   npm run start
+   npm run start -- --approval
    ```
 2. The workflow prints instructions and pauses waiting for your signal.
 3. In another terminal, approve with a specific item:

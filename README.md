@@ -84,15 +84,15 @@ Temporal worker started. Waiting for tasks...
 ---
 
 ### Step 3: Trigger the Workflow Execution
-In a third terminal, start a new workflow run. You can choose which engine executes the "Add to Cart" activity:
+In a third terminal, start a new workflow run. By default, the workflow scrapes the inventory and automatically adds the first item to the cart:
 
-- **Playwright mode (Default, fast, no API keys needed):**
+- **Default (Playwright mode, fast, automatic):**
   ```bash
-  npm run start -- --playright
-  # or simply: npm run start
+  npm run start
+  # or explicitly: npm run start -- --playright
   ```
 
-- **Stagehand AI mode (Uses natural-language agent):**
+- **Stagehand AI mode (Uses natural-language agent, automatic):**
   ```bash
   npm run start -- --stagehand
   ```
@@ -101,24 +101,33 @@ In a third terminal, start a new workflow run. You can choose which engine execu
   ```bash
   npm run start -- --both
   ```
-This logs in to SauceDemo, captures inventory, displays the product list, and pauses with output similar to:
+
+---
+
+### Step 4: Human-in-the-Loop Mode (`--approval`)
+If you want the workflow to pause after reading inventory and wait for manual human approval (Level 2), add the `--approval` flag:
+
+```bash
+npm run start -- --approval
+# or combined with other cart modes:
+npm run start -- --approval --stagehand
+```
+
+When started with `--approval`, the workflow logs the inventory items and pauses:
 ```text
 Started workflow: inventory-check-1718000000000
 
 Workflow is running and reading inventory...
 Once inventory is read, the workflow pauses and waits for your signal.
-Waiting for workflow completion...
+Waiting for signal and workflow completion...
 ```
 
----
-
-### Step 4: Send an Approval or Rejection Signal
-While the workflow is paused waiting for input, open another terminal (or use the third terminal) and send a signal using either method below:
+While paused, open another terminal and send an approval or rejection signal:
 
 #### Option A: Using the project's helper script (Recommended)
 Replace `<workflow-id>` with the actual ID printed by `npm run start` (e.g. `inventory-check-1718000000000`):
 
-- **Approve (default item / first item):**
+- **Approve (adds default or first item):**
   ```bash
   npm run signal -- <workflow-id> approve
   ```

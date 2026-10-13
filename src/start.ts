@@ -10,6 +10,8 @@ function parseArgs(): { options: WorkflowOptions; isHelp: boolean } {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") {
       isHelp = true;
+    } else if (arg === "--approval") {
+      options.requireApproval = true;
     } else if (arg === "--both") {
       options.mode = "both";
     } else if (arg === "--playwright" || arg === "--playright") {
@@ -35,6 +37,7 @@ function printUsage() {
 Usage: npm run start [-- <options>]
 
 Options:
+  --approval                     Pause after inventory check and wait for human approval signal.
   --playwright, --playright      Add to cart with native Playwright (fast, deterministic - default).
   --stagehand                    Add to cart with Stagehand AI agent (natural language prompts).
   --both                         Try Playwright first; automatically fall back to Stagehand if Playwright fails.
@@ -48,11 +51,15 @@ Options:
   --help, -h                     Show this help message
 
 Cart Mode Examples:
-  • Run with Playwright (default):
-     npm run start -- --playright
-     (or npm run start -- --playwright)
+  • Automatic execution (default - adds first item without pausing):
+     npm run start
+     (or npm run start -- --playright)
 
-  • Run with Stagehand AI:
+  • With Human Approval Signal:
+     npm run start -- --approval
+     npm run start -- --approval --stagehand
+
+  • Run with Stagehand AI (automatic):
      npm run start -- --stagehand
 
   • Run in resilient Both mode (Playwright first, Stagehand fallback):
@@ -95,6 +102,13 @@ async function main() {
   console.log("==================================================");
   console.log("Starting Workflow Execution");
   console.log(` Cart Mode: ${cartMode.toUpperCase()} (${modeDescription})`);
+  console.log(
+    ` Approval: ${
+      options.requireApproval
+        ? "REQUIRED (--approval mode)"
+        : "AUTO (adds first item without pausing)"
+    }`
+  );
   if (options.simulateFirstAttemptFailure) {
     console.log(" Mode: Flaky Activity Simulation (Attempt #1 will fail, #2 will succeed)");
   }
@@ -114,16 +128,23 @@ async function main() {
   });
 
   console.log(`Started workflow: ${handle.workflowId}`);
-  console.log("\nWorkflow is running and reading inventory...");
-  console.log("Once inventory is read, the workflow pauses and waits for your signal.");
-  console.log("\nTo send a signal, run ONE of these one-line CLI commands in another terminal:\n");
-  console.log(`  # Approve (adds default or first item):`);
-  console.log(`  npm run signal -- ${handle.workflowId} approve\n`);
-  console.log(`  # Approve with a specific item:`);
-  console.log(`  npm run signal -- ${handle.workflowId} approve "Sauce Labs Backpack"\n`);
-  console.log(`  # Reject:`);
-  console.log(`  npm run signal -- ${handle.workflowId} reject\n`);
-  console.log("Waiting for workflow completion...\n");
+  if (options.requireApproval) {
+    console.log("\nWorkflow is running and reading inventory...");
+    console.log("Once inventory is read, the workflow pauses and waits for your signal.");
+    console.log("\nTo send a signal, run ONE of these one-line CLI commands in another terminal:\n");
+    console.log(`  # Approve (adds default or first item):`);
+    console.log(`  npm run signal -- ${handle.workflowId} approve\n`);
+    console.log(`  # Approve with a specific item:`);
+    console.log(`  npm run signal -- ${handle.workflowId} approve "Sauce Labs Backpack"\n`);
+    console.log(`  # Reject:`);
+    console.log(`  npm run signal -- ${handle.workflowId} reject\n`);
+    console.log("Waiting for signal and workflow completion...\n");
+  } else {
+    console.log("\nWorkflow is running...");
+    console.log("1. Reading inventory and capturing screenshot.");
+    console.log("2. Automatically adding first item to cart and capturing screenshot.");
+    console.log("Waiting for workflow completion...\n");
+  }
 
   try {
     // Wait until the workflow completes and returns its result.
@@ -144,7 +165,7 @@ async function main() {
     }
   } catch (error: any) {
     console.log("\n==========================================");
-    console.log("⚠️ WORKFLOW EXECUTION FAILED");
+    console.log("WORKFLOW EXECUTION FAILED");
     console.log("==========================================");
 
     if (error instanceof WorkflowFailedError) {
@@ -152,11 +173,11 @@ async function main() {
       console.log(`Failure Reason: ${causeMessage}`);
 
       if (options.username === "locked_out_user") {
-        console.log("\n🎓 Level 3 Lesson Verified (Non-Retryable Error):");
+        console.log("\n[Level 3 Lesson] Non-Retryable Error Verified:");
         console.log("Notice that Temporal did NOT retry! Because the error was marked as");
         console.log("ApplicationFailure.nonRetryable, Temporal terminated immediately.");
       } else if (options.activityTimeout) {
-        console.log("\n🎓 Level 3 Lesson Verified (Activity Timeout):");
+        console.log("\n[Level 3 Lesson] Activity Timeout Verified:");
         console.log("The activity took longer than the configured startToCloseTimeout.");
         console.log("Temporal cancelled/timed out the activity as expected!");
       }
