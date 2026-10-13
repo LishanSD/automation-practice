@@ -22,10 +22,12 @@
   },
   "homepage": "https://github.com/LishanSD/automation-practice#readme",
   "dependencies": {
+    "@browserbasehq/stagehand": "^4.2.1",
     "@temporalio/client": "^1.24.0",
     "@temporalio/worker": "^1.24.0",
     "@temporalio/workflow": "^1.24.0",
-    "playwright": "^1.64.0"
+    "playwright": "^1.64.0",
+    "zod": "~4.4.3"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
