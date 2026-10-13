@@ -121,69 +121,105 @@ export async function readInventory(
   }
 }
 
+// Resolves the LLM Stagehand should use, based on env vars (see .env.example).
+// The API key is picked from the env var matching the model's provider prefix.
+function resolveStagehandModel(): { modelName: string; apiKey: string } {
+  const modelName = process.env.STAGEHAND_MODEL ?? "openai/gpt-4.1-mini";
+  const provider = modelName.split("/")[0];
+
+  const keyEnvByProvider: Record<string, string[]> = {
+    openai: ["OPENAI_API_KEY"],
+    anthropic: ["ANTHROPIC_API_KEY"],
+    google: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"],
+    groq: ["GROQ_API_KEY"],
+    cerebras: ["CEREBRAS_API_KEY"],
+  };
+
+  const candidates = keyEnvByProvider[provider] ?? [];
+  const apiKey = candidates.map((name) => process.env[name]).find(Boolean);
+
+  if (!apiKey) {
+    // Missing config will never fix itself on retry, so fail permanently.
+    throw ApplicationFailure.nonRetryable(
+      `No API key found for Stagehand model '${modelName}'. Set ${
+        candidates.join(" or ") || "a supported provider key"
+      } in .env.`,
+      "MissingApiKeyError"
+    );
+  }
+
+  return { modelName, apiKey };
+}
+
+// Stagehand-powered activity: login and verification are deterministic,
+// while "add the item" and "open the cart" are done by natural-language act().
 export async function addToCart(
   itemName: string,
   username?: string
 ): Promise<AddToCartResult> {
   const user = username ?? "standard_user";
-  const browser = await chromium.launch({ headless: false });
+  const { modelName, apiKey } = resolveStagehandModel();
+
+  // Stagehand v4 is ESM-only while this project is CommonJS, so load it dynamically.
+  const { Stagehand, localBrowser } = await import("@browserbasehq/stagehand");
+
+  const browser = await localBrowser.launch({ headless: false });
+  let stagehand: Awaited<ReturnType<typeof Stagehand.create>> | undefined;
 
   try {
-    const page = await browser.newPage();
-
-    // Open the SauceDemo login page.
-    await page.goto("https://www.saucedemo.com", {
-      waitUntil: "domcontentloaded",
+    stagehand = await Stagehand.create({
+      browser,
+      model: { modelName: modelName as any, apiKey },
     });
 
-    // Log in using the practice site's account.
+    const [page] = await browser.context.pages();
+
+    // Open the SauceDemo login page.
+    await page.goto("https://www.saucedemo.com");
+
+    // Deterministic login (no LLM involved, so credentials never reach the model).
     await page.locator('[data-test="username"]').fill(user);
     await page.locator('[data-test="password"]').fill("secret_sauce");
     await page.locator('[data-test="login-button"]').click();
 
-    // Check for login errors.
-    const inventoryLocator = page.locator(".inventory_item").first();
-    const errorLocator = page.locator('[data-test="error"]');
+    // Wait for either the inventory list or a login error.
+    const loggedIn = await page.waitForSelector(".inventory_item", {
+      timeout: 15000,
+    }).catch(() => false);
 
-    const outcome = await Promise.race([
-      inventoryLocator.waitFor({ timeout: 15000 }).then(() => "success" as const),
-      errorLocator.waitFor({ timeout: 15000 }).then(() => "error" as const),
-    ]);
-
-    if (outcome === "error") {
+    if (!loggedIn) {
       const errorText =
-        (await errorLocator.textContent())?.trim() || "Login failed";
+        (await page
+          .locator('[data-test="error"]')
+          .textContent()
+          .catch(() => ""))?.trim() || "Login failed";
       throw ApplicationFailure.nonRetryable(
         `User '${user}' cannot log in: ${errorText}`,
         "LockedOutUserError"
       );
     }
 
-    // Locate the chosen product container.
-    const itemContainer = page.locator(".inventory_item", {
-      has: page.locator(".inventory_item_name", { hasText: itemName }),
-    });
+    // AI steps: Stagehand figures out the right elements from the instruction.
+    await stagehand.act(`click the "Add to cart" button for the product named "${itemName}"`);
+    await stagehand.act("click the shopping cart icon in the top right to open the cart");
 
-    // Click "Add to cart" for that product.
-    await itemContainer.locator("button").click();
-
-    // Navigate to the cart to show the item was added, and stop there without checking out.
-    await page.locator(".shopping_cart_link").click();
-    await page.locator(".cart_item").first().waitFor();
+    // Deterministic verification that the cart page really shows the item.
+    const cartLoaded = await page.waitForSelector(".cart_item", { timeout: 15000 });
+    if (!cartLoaded) {
+      throw new Error(`Cart page did not show any items after adding '${itemName}'`);
+    }
 
     // Save a screenshot of the cart.
     const screenshotDir = path.resolve("artifacts");
     await fs.mkdir(screenshotDir, { recursive: true });
 
     const screenshotPath = path.join(screenshotDir, "cart.png");
-    await page.screenshot({
-      path: screenshotPath,
-      fullPage: true,
-    });
+    await page.screenshot({ path: screenshotPath, fullPage: true });
 
     return { itemName, screenshotPath };
   } finally {
-    await browser.close();
+    await stagehand?.close().catch(() => {});
+    await browser.close().catch(() => {});
   }
 }
 

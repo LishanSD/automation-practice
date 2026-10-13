@@ -1,6 +1,12 @@
 import { Worker } from "@temporalio/worker";
 import path from "node:path";
+import fs from "node:fs";
 import * as activities from "./activities";
+
+// Load API keys (e.g. OPENAI_API_KEY) from .env for the Stagehand-powered activity.
+if (fs.existsSync(".env")) {
+  process.loadEnvFile(".env");
+}
 
 async function runWorker() {
   const worker = await Worker.create({

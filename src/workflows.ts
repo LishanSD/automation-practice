@@ -49,7 +49,7 @@ export async function inventoryWorkflow(
       initialInterval: "1s",
       backoffCoefficient: 2,
       maximumAttempts: options?.maxAttempts ?? 3,
-      nonRetryableErrorTypes: ["LockedOutUserError"],
+      nonRetryableErrorTypes: ["LockedOutUserError", "MissingApiKeyError"],
     },
   });
 
