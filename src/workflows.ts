@@ -28,9 +28,36 @@ export type WorkflowResult = {
   message: string;
 };
 
-export async function inventoryWorkflow(): Promise<WorkflowResult> {
+export type WorkflowOptions = {
+  username?: string;
+  simulateFirstAttemptFailure?: boolean;
+  activityTimeout?: string;
+  maxAttempts?: number;
+};
+
+export async function inventoryWorkflow(
+  options?: WorkflowOptions
+): Promise<WorkflowResult> {
+  // Configure activities' timeout and retry policy:
+  // - startToCloseTimeout: Limits how long a single attempt can take (e.g. "3s" for slow-page timeout demo).
+  // - retry.initialInterval: "1s" delay before first retry attempt.
+  // - retry.maximumAttempts: Allows up to 3 attempts.
+  // - retry.nonRetryableErrorTypes: Ensures LockedOutUserError is never retried.
+  const { readInventory, addToCart } = proxyActivities<typeof activities>({
+    startToCloseTimeout: options?.activityTimeout ?? "2 minutes",
+    retry: {
+      initialInterval: "1s",
+      backoffCoefficient: 2,
+      maximumAttempts: options?.maxAttempts ?? 3,
+      nonRetryableErrorTypes: ["LockedOutUserError"],
+    },
+  });
+
   // 1. The workflow delegates reading inventory to the first activity.
-  const inventoryResult = await readInventory();
+  const inventoryResult = await readInventory({
+    username: options?.username,
+    simulateFirstAttemptFailure: options?.simulateFirstAttemptFailure,
+  });
 
   // 2. Pause and wait for an approve or reject signal.
   let decision: "approved" | "rejected" | null = null;
@@ -64,7 +91,7 @@ export async function inventoryWorkflow(): Promise<WorkflowResult> {
   // 3. On approval, add chosen item (defaulting to the first item) to cart and screenshot.
   const targetItem =
     chosenItem || inventoryResult.products[0]?.name || "Sauce Labs Backpack";
-  const cartResult = await addToCart(targetItem);
+  const cartResult = await addToCart(targetItem, options?.username);
 
   return {
     status: "approved",

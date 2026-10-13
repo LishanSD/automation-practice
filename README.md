@@ -140,6 +140,35 @@ Replace `<workflow-id>` with the actual ID printed by `npm run start` (e.g. `inv
 
 ---
 
+## Level 3: Retries, Timeouts & Error Handling Scenarios
+
+Level 3 teaches the differences between transient errors (retryable), permanent errors (non-retryable), and timeouts.
+
+### 1. Watch Temporal Retry a Flaky Activity
+Simulate a transient network/UI glitch on attempt #1:
+```bash
+npm run start -- --simulate-retry
+```
+- **What happens**: The activity throws a standard `Error` on attempt #1. Temporal's `RetryPolicy` catches it, waits for the initial interval (`1s`), and triggers attempt #2 which succeeds.
+- **Where to observe**: Check the worker terminal or [http://localhost:8233](http://localhost:8233) to see both attempts.
+
+### 2. Non-Retryable Failure (`locked_out_user`)
+Test a permanent authorization failure:
+```bash
+npm run start -- --user locked_out_user
+```
+- **What happens**: SauceDemo displays an error stating the user is locked out. The activity throws `ApplicationFailure.nonRetryable(..., "LockedOutUserError")`.
+- **Temporal Behavior**: Temporal immediately terminates the activity and fails the workflow **without retrying**, preventing wasted executions on permanent errors.
+
+### 3. Slow-Page Timeout (`performance_glitch_user`)
+Test timeout enforcement when a page hangs or takes too long:
+```bash
+npm run start -- --user performance_glitch_user --timeout 3s
+```
+- **What happens**: SauceDemo's `performance_glitch_user` takes ~6 seconds to load the page. Because `startToCloseTimeout` is configured to `3s`, Temporal times out the activity (`START_TO_CLOSE`).
+
+---
+
 ## Output & Artifacts
 
 After completion, results and logs are displayed in the terminal:
@@ -156,11 +185,12 @@ After completion, results and logs are displayed in the terminal:
 automation-practice/
 ├── artifacts/              # Generated full-page screenshots (inventory.png, cart.png)
 ├── src/
-│   ├── activities.ts       # Playwright activities (readInventory, addToCart)
-│   ├── workflows.ts        # Temporal workflow definition & signals
+│   ├── activities.ts       # Playwright activities (readInventory, addToCart) with retry & error handling
+│   ├── workflows.ts        # Temporal workflow definition, retry policies & signals
 │   ├── worker.ts           # Temporal worker process
-│   ├── start.ts            # Client script to initiate the workflow execution
+│   ├── start.ts            # Client script to initiate workflows with CLI options
 │   └── signal.ts           # Helper script to send approve/reject signals
+├── AGENTS.md               # 3-Level learning ladder guide
 ├── package.json            # Dependencies and npm scripts
 ├── tsconfig.json           # TypeScript configuration
 └── README.md               # Project documentation
@@ -173,5 +203,5 @@ automation-practice/
 | Script | Command | Description |
 | :--- | :--- | :--- |
 | `npm run worker` | `tsx src/worker.ts` | Starts the Temporal worker listening for workflow/activity tasks |
-| `npm run start` | `tsx src/start.ts` | Starts a new workflow execution |
+| `npm run start` | `tsx src/start.ts` | Starts a workflow (supports `--simulate-retry`, `--user`, `--timeout`) |
 | `npm run signal -- <id> <approve\|reject> [item]` | `tsx src/signal.ts ...` | Sends an approve or reject signal to a paused workflow |
