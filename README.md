@@ -96,6 +96,11 @@ In a third terminal, start a new workflow run. You can choose which engine execu
   ```bash
   npm run start -- --stagehand
   ```
+
+- **Both mode (Resilient: tries Playwright first, falls back to Stagehand if Playwright fails):**
+  ```bash
+  npm run start -- --both
+  ```
 This logs in to SauceDemo, captures inventory, displays the product list, and pauses with output similar to:
 ```text
 Started workflow: inventory-check-1718000000000

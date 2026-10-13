@@ -10,6 +10,8 @@ function parseArgs(): { options: WorkflowOptions; isHelp: boolean } {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") {
       isHelp = true;
+    } else if (arg === "--both") {
+      options.mode = "both";
     } else if (arg === "--playwright" || arg === "--playright") {
       options.mode = "playwright";
     } else if (arg === "--stagehand") {
@@ -35,6 +37,7 @@ Usage: npm run start [-- <options>]
 Options:
   --playwright, --playright      Add to cart with native Playwright (fast, deterministic - default).
   --stagehand                    Add to cart with Stagehand AI agent (natural language prompts).
+  --both                         Try Playwright first; automatically fall back to Stagehand if Playwright fails.
   --simulate-retry, --flaky       Simulate a transient failure on attempt #1 to watch Temporal retry.
   --user <username>              SauceDemo username to run with:
                                    • standard_user (default)
@@ -51,6 +54,9 @@ Cart Mode Examples:
 
   • Run with Stagehand AI:
      npm run start -- --stagehand
+
+  • Run in resilient Both mode (Playwright first, Stagehand fallback):
+     npm run start -- --both
 
 Level 3 Examples:
   1. Watch Temporal retry a flaky attempt:
@@ -80,9 +86,15 @@ async function main() {
   const client = new Client({ connection });
 
   const cartMode = options.mode ?? "playwright";
+  const modeDescription =
+    cartMode === "both"
+      ? "Playwright with Stagehand AI fallback"
+      : cartMode === "stagehand"
+      ? "Stagehand AI Agent"
+      : "Native Playwright";
   console.log("==================================================");
   console.log("Starting Workflow Execution");
-  console.log(` Cart Mode: ${cartMode.toUpperCase()} (${cartMode === "stagehand" ? "Stagehand AI Agent" : "Native Playwright"})`);
+  console.log(` Cart Mode: ${cartMode.toUpperCase()} (${modeDescription})`);
   if (options.simulateFirstAttemptFailure) {
     console.log(" Mode: Flaky Activity Simulation (Attempt #1 will fail, #2 will succeed)");
   }

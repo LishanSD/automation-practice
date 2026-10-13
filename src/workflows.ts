@@ -33,7 +33,7 @@ export type WorkflowOptions = {
   simulateFirstAttemptFailure?: boolean;
   activityTimeout?: string;
   maxAttempts?: number;
-  mode?: "playwright" | "stagehand";
+  mode?: "playwright" | "stagehand" | "both";
 };
 
 export async function inventoryWorkflow(

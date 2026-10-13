@@ -151,7 +151,7 @@ function resolveStagehandModel(): { modelName: string; apiKey: string } {
   return { modelName, apiKey };
 }
 
-export type CartMode = "playwright" | "stagehand";
+export type CartMode = "playwright" | "stagehand" | "both";
 
 // Native Playwright implementation: fast, reliable, and requires zero LLM API keys.
 export async function addToCartPlaywright(
@@ -318,6 +318,7 @@ export async function addToCartStagehand(
 }
 
 // Master addToCart activity that delegates based on the selected mode (defaults to "playwright").
+// If mode is "both", it attempts Playwright first and automatically falls back to Stagehand if Playwright fails.
 export async function addToCart(
   itemName: string,
   username?: string,
@@ -326,6 +327,24 @@ export async function addToCart(
   if (mode === "stagehand") {
     return addToCartStagehand(itemName, username);
   }
+
+  if (mode === "both") {
+    console.log(`\n[Mode: Both] Attempting with native Playwright first...`);
+    try {
+      return await addToCartPlaywright(itemName, username);
+    } catch (error: any) {
+      // Permanent authentication errors should not fallback (account is locked)
+      if (error instanceof ApplicationFailure && error.type === "LockedOutUserError") {
+        throw error;
+      }
+      console.warn(
+        `\n[Mode: Both] Playwright failed: "${error?.message || error}".`
+      );
+      console.log(`[Mode: Both] Falling back to Stagehand AI agent...`);
+      return await addToCartStagehand(itemName, username);
+    }
+  }
+
   return addToCartPlaywright(itemName, username);
 }
 
