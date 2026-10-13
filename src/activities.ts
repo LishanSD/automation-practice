@@ -46,7 +46,13 @@ export async function readInventory(
 
   // Launch a real Chromium browser.
   // Set headless: false to watch it visually in headed mode.
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({
+    headless: false,
+    args: [
+      "--disable-save-password-bubble",
+      "--disable-features=PasswordManager,PasswordsPrefPage,AutofillServerCommunication",
+    ],
+  });
 
   try {
     const page = await browser.newPage();
@@ -151,6 +157,23 @@ function resolveStagehandModel(): { modelName: string; apiKey: string } {
   return { modelName, apiKey };
 }
 
+// Configures a Chrome profile with password saving and autofill prompts disabled.
+async function prepareChromeProfile(): Promise<string> {
+  const profileDir = path.resolve(".stagehand-profile");
+  const defaultDir = path.join(profileDir, "Default");
+  await fs.mkdir(defaultDir, { recursive: true });
+
+  const prefsPath = path.join(defaultDir, "Preferences");
+  const prefs = {
+    credentials_enable_service: false,
+    profile: {
+      password_manager_enabled: false,
+    },
+  };
+  await fs.writeFile(prefsPath, JSON.stringify(prefs, null, 2));
+  return profileDir;
+}
+
 export type CartMode = "playwright" | "stagehand" | "both";
 
 // Native Playwright implementation: fast, reliable, and requires zero LLM API keys.
@@ -165,7 +188,13 @@ export async function addToCartPlaywright(
   console.log(`Target item: "${itemName}"`);
   console.log(`Target username: "${user}"`);
 
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({
+    headless: false,
+    args: [
+      "--disable-save-password-bubble",
+      "--disable-features=PasswordManager,PasswordsPrefPage,AutofillServerCommunication",
+    ],
+  });
 
   try {
     const page = await browser.newPage();
@@ -240,8 +269,17 @@ export async function addToCartStagehand(
   // Stagehand v4 is ESM-only while this project is CommonJS, so load it dynamically.
   const { Stagehand, localBrowser } = await import("@browserbasehq/stagehand");
 
-  console.log(`[Stagehand] Launching Chromium browser...`);
-  const browser = await localBrowser.launch({ headless: false });
+  const profileDir = await prepareChromeProfile();
+
+  console.log(`[Stagehand] Launching Chromium browser (with password saving disabled)...`);
+  const browser = await localBrowser.launch({
+    headless: false,
+    userDataDir: profileDir,
+    args: [
+      "--disable-save-password-bubble",
+      "--disable-features=PasswordManager,PasswordsPrefPage,AutofillServerCommunication",
+    ],
+  });
   let stagehand: Awaited<ReturnType<typeof Stagehand.create>> | undefined;
 
   try {
