@@ -37,7 +37,7 @@ export async function readInventory(
   // Temporal's RetryPolicy will catch this and schedule a retry.
   if (options?.simulateFirstAttemptFailure && attempt === 1) {
     console.warn(
-      `[Activity: readInventory] 💥 Simulating transient failure on attempt #1! (Temporal will retry)`
+      `[Activity: readInventory] Simulating transient failure on attempt #1! (Temporal will retry)`
     );
     throw new Error(
       "Simulated transient network glitch on attempt 1 (Temporal will retry automatically based on its RetryPolicy)"
@@ -77,7 +77,7 @@ export async function readInventory(
       const errorText =
         (await errorLocator.textContent())?.trim() || "Login failed";
       console.error(
-        `[Activity: readInventory] 🚫 Non-retryable login error detected: "${errorText}"`
+        `[Activity: readInventory] Non-retryable login error detected: "${errorText}"`
       );
       throw ApplicationFailure.nonRetryable(
         `User '${username}' cannot log in: ${errorText}`,
@@ -110,7 +110,7 @@ export async function readInventory(
     });
 
     console.log(
-      `[Activity: readInventory] ✅ Succeeded on attempt #${attempt}. Found ${products.length} products.`
+      `[Activity: readInventory] Succeeded on attempt #${attempt}. Found ${products.length} products.`
     );
 
     // Return structured data to the Temporal workflow.
@@ -157,27 +157,38 @@ export async function addToCart(
   itemName: string,
   username?: string
 ): Promise<AddToCartResult> {
+  const attempt = Context.current().info.attempt;
   const user = username ?? "standard_user";
   const { modelName, apiKey } = resolveStagehandModel();
+
+  console.log(`\n--- [Activity: addToCart] Attempt #${attempt} ---`);
+  console.log(`Target item: "${itemName}"`);
+  console.log(`Target username: "${user}"`);
+  console.log(`Stagehand AI Model: "${modelName}"`);
 
   // Stagehand v4 is ESM-only while this project is CommonJS, so load it dynamically.
   const { Stagehand, localBrowser } = await import("@browserbasehq/stagehand");
 
+  console.log(`[Stagehand] Launching Chromium browser...`);
   const browser = await localBrowser.launch({ headless: false });
   let stagehand: Awaited<ReturnType<typeof Stagehand.create>> | undefined;
 
   try {
+    console.log(`[Stagehand] Initializing Stagehand session with ${modelName}...`);
     stagehand = await Stagehand.create({
       browser,
       model: { modelName: modelName as any, apiKey },
     });
+    console.log(`[Stagehand] Session initialized.`);
 
     const [page] = await browser.context.pages();
 
     // Open the SauceDemo login page.
+    console.log(`[Stagehand] Navigating to https://www.saucedemo.com...`);
     await page.goto("https://www.saucedemo.com");
 
     // Deterministic login (no LLM involved, so credentials never reach the model).
+    console.log(`[Stagehand] Logging in as '${user}' (deterministic)...`);
     await page.locator('[data-test="username"]').fill(user);
     await page.locator('[data-test="password"]').fill("secret_sauce");
     await page.locator('[data-test="login-button"]').click();
@@ -193,31 +204,43 @@ export async function addToCart(
           .locator('[data-test="error"]')
           .textContent()
           .catch(() => ""))?.trim() || "Login failed";
+      console.error(`[Stagehand] Login failed for '${user}': "${errorText}"`);
       throw ApplicationFailure.nonRetryable(
         `User '${user}' cannot log in: ${errorText}`,
         "LockedOutUserError"
       );
     }
+    console.log(`[Stagehand] Logged in successfully. Inventory page loaded.`);
 
     // AI steps: Stagehand figures out the right elements from the instruction.
-    await stagehand.act(`click the "Add to cart" button for the product named "${itemName}"`);
-    await stagehand.act("click the shopping cart icon in the top right to open the cart");
+    console.log(`\n[Stagehand AI: Act 1] Instructing LLM to locate and add "${itemName}" to cart...`);
+    const addResult = await stagehand.act(`click the "Add to cart" button for the product named "${itemName}"`);
+    console.log(`   └─ Action result: "${addResult.data?.message || addResult.data?.actionDescription || "Executed"}"`);
+
+    console.log(`[Stagehand AI: Act 2] Instructing LLM to open the shopping cart...`);
+    const cartNavResult = await stagehand.act("click the shopping cart icon in the top right to open the cart");
+    console.log(`   └─ Action result: "${cartNavResult.data?.message || cartNavResult.data?.actionDescription || "Executed"}"`);
 
     // Deterministic verification that the cart page really shows the item.
+    console.log(`\n[Stagehand] Verifying cart page contains items...`);
     const cartLoaded = await page.waitForSelector(".cart_item", { timeout: 15000 });
     if (!cartLoaded) {
       throw new Error(`Cart page did not show any items after adding '${itemName}'`);
     }
+    console.log(`[Stagehand] Cart verification passed. Item confirmed in cart.`);
 
     // Save a screenshot of the cart.
     const screenshotDir = path.resolve("artifacts");
     await fs.mkdir(screenshotDir, { recursive: true });
 
     const screenshotPath = path.join(screenshotDir, "cart.png");
+    console.log(`[Stagehand] Capturing cart screenshot -> ${screenshotPath}`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
 
+    console.log(`[Activity: addToCart] Succeeded on attempt #${attempt}.\n`);
     return { itemName, screenshotPath };
   } finally {
+    console.log(`[Stagehand] Closing browser and cleaning up session.`);
     await stagehand?.close().catch(() => {});
     await browser.close().catch(() => {});
   }
