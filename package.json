@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "worker": "tsx src/worker.ts",
+    "worker:watch": "tsx watch src/worker.ts",
     "start": "tsx src/start.ts",
     "signal": "tsx src/signal.ts"
   },

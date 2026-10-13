@@ -187,6 +187,9 @@ export async function addToCart(
     console.log(`[Stagehand] Navigating to https://www.saucedemo.com...`);
     await page.goto("https://www.saucedemo.com");
 
+    // Wait for the login form to render before interacting (Stagehand locators do not auto-wait like Playwright).
+    await page.waitForSelector('[data-test="username"]', { timeout: 15000 });
+
     // Deterministic login (no LLM involved, so credentials never reach the model).
     console.log(`[Stagehand] Logging in as '${user}' (deterministic)...`);
     await page.locator('[data-test="username"]').fill(user);
